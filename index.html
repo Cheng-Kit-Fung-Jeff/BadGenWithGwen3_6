@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Grid Character</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #eee;
+        }
+
+        h1 {
+            margin-bottom: 15px;
+            color: #e94560;
+            text-shadow: 0 0 10px rgba(233, 69, 96, 0.5);
+        }
+
+        #game-container {
+            position: relative;
+            border: 3px solid #e94560;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(233, 69, 96, 0.3);
+        }
+
+        #game-grid {
+            display: grid;
+            background: #16213e;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #0f3460;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: background-color 0.2s;
+        }
+
+        .cell:hover {
+            background-color: rgba(233, 69, 96, 0.1);
+        }
+
+        .character {
+            background-color: rgba(233, 69, 96, 0.3);
+            border-radius: 50%;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from {
+                transform: scale(0.8);
+            }
+
+            to {
+                transform: scale(1);
+            }
+        }
+
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .control-panel {
+            background: #16213e;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 2px solid #0f3460;
+        }
+
+        .control-panel h3 {
+            margin-bottom: 10px;
+            color: #e94560;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-panel p {
+            font-size: 13px;
+            line-height: 1.8;
+            color: #a0a0a0;
+        }
+
+        kbd {
+            background: #0f3460;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #e94560;
+        }
+
+        #data-panel {
+            margin-top: 20px;
+            background: #16213e;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 2px solid #0f3460;
+            min-width: 300px;
+        }
+
+        #data-panel h3 {
+            margin-bottom: 10px;
+            color: #e94560;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #data-display {
+            font-family: monospace;
+            font-size: 12px;
+            color: #a0a0a0;
+            white-space: pre-wrap;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        button {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #c73e54;
+        }
+
+        .cell.turret-cell {
+            background-color: rgba(255, 100, 100, 0.2);
+        }
+
+        .cell.pellet-cell {
+            background-color: rgba(255, 255, 0, 0.2);
+        }
+
+        .cell.robot-cell {
+            background-color: rgba(233, 69, 96, 0.2);
+        }
+
+        .cell.robot-cell {
+            background-color: rgba(233, 69, 96, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <h1>2D Grid Character</h1>
+
+    <div id="game-container">
+        <div id="game-grid"></div>
+    </div>
+
+    <div id="controls">
+        <div class="control-panel">
+            <h3>Controls</h3>
+            <p>
+                <kbd>W</kbd> Up &nbsp; <kbd>A</kbd> Left<br>
+                <kbd>S</kbd> Down &nbsp; <kbd>D</kbd> Right
+            </p>
+        </div>
+        <button id="reset-btn">Reset Position</button>
+    </div>
+
+    <div id="data-panel">
+        <h3>Stored Data</h3>
+        <div id="data-display"></div>
+    </div>
+
+    <script>
+        // ===== CONFIGURATION =====
+        const GRID_ROWS = 15;
+        const GRID_COLS = 20;
+        const CELL_SIZE = 40;
+
+        // ===== GAME DATA STORED IN ARRAYS =====
+
+        // 2D grid array: 0 = empty, 1 = obstacle, 2 = collectible
+        const gridData = [];
+        for (let r = 0; r < GRID_ROWS; r++) {
+            gridData[r] = [];
+            for (let c = 0; c < GRID_COLS; c++) {
+                // Create some obstacles randomly
+                gridData[r][c] = Math.random() < 0.1 ? 1 : 0;
+            }
+        }
+
+        // Make sure the starting position is clear
+        gridData[7][10] = 0;
+
+        // Character data stored as arrays
+        const character = {
+            position: [7, 10],      // [row, col]
+            direction: 'right',      // current facing direction
+            trail: [[7, 10]],        // array of visited positions
+            moves: [],               // array of all moves made
+            score: 0                 // collected items count
+        };
+
+        // Obstacles stored as array of [row, col]
+        const obstacles = [];
+        for (let r = 0; r < GRID_ROWS; r++) {
+            for (let c = 0; c < GRID_COLS; c++) {
+                if (gridData[r][c] === 1) {
+                    obstacles.push([r, c]);
+                }
+            }
+        }
+
+        // Collectibles stored as array of [row, col]
+        const collectibles = [];
+        for (let i = 0; i < 8; i++) {
+            let r, c;
+            do {
+                r = Math.floor(Math.random() * GRID_ROWS);
+                c = Math.floor(Math.random() * GRID_COLS);
+            } while (gridData[r][c] === 1 || gridData[r][c] === 3 || (r === 7 && c === 10));
+            collectibles.push([r, c]);
+        }
+
+        // Boxes stored as array of [row, col] objects
+        const boxes = [];
+        for (let i = 0; i < 5; i++) {
+            let r, c;
+            do {
+                r = Math.floor(Math.random() * GRID_ROWS);
+                c = Math.floor(Math.random() * GRID_COLS);
+            } while (gridData[r][c] === 1 || gridData[r][c] === 3 || (r === 7 && c === 10));
+            boxes.push({ position: [r, c], pushed: false });
+            gridData[r][c] = 3; // mark cell as box location
+        }
+
+        const boxSymbols = ['📦', '🧱', '🪵', 'mailbox', '🗃️'];
+
+        // ===== ROBOTS - Enemies that move and hurt the character =====
+        const robots = [];
+        const robotSymbols = ['🤖', '👾', '💀', '👽'];
+        for (let i = 0; i < 3; i++) {
+            let r, c;
+            do {
+                r = Math.floor(Math.random() * GRID_ROWS);
+                c = Math.floor(Math.random() * GRID_COLS);
+            } while (gridData[r][c] !== 0 || (r === 7 && c === 10));
+            robots.push({
+                position: [r, c],
+                direction: ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)],
+                lastMoveTime: Date.now(),
+                moveInterval: 800 + Math.random() * 400,
+                symbol: robotSymbols[i % robotSymbols.length]
+            });
+            gridData[r][c] = 5; // mark cell as robot location
+        }
+
+        // ===== TURRETS & PELLETS =====
+
+        // Define turret symbols first (must come before usage)
+        const turretSymbols = ['🔴', '🟠', '🟡', '🟣'];
+
+        // Turrets stored as array of objects
+        const turrets = [];
+        for (let i = 0; i < 4; i++) {
+            let r, c, dir;
+            do {
+                r = Math.floor(Math.random() * GRID_ROWS);
+                c = Math.floor(Math.random() * GRID_COLS);
+                dir = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+            } while (gridData[r][c] === 1 || gridData[r][c] === 3 || gridData[r][c] === 4 || (r === 7 && c === 10));
+            turrets.push({ position: [r, c], direction: dir, lastFireTime: Date.now(), symbol: turretSymbols[i] });
+            gridData[r][c] = 4; // mark cell as turret location
+        }
+
+        // Active pellets stored as array of objects
+        const pellets = [];
+
+        const directionVectors = {
+            'up': [-1, 0],
+            'down': [1, 0],
+            'left': [0, -1],
+            'right': [0, 1]
+        };
+
+        // ===== TURRET GAME LOOP =====
+        function gameLoop() {
+            const now = Date.now();
+
+            // Turrets fire pellets every second
+            turrets.forEach(turret => {
+                if (now - turret.lastFireTime >= 1000) {
+                    shootPellet(turret);
+                    turret.lastFireTime = now;
+                }
+            });
+
+            // Move active pellets
+            movePellets();
+
+            // Move robots
+            moveRobots();
+
+            // Update rendering
+            renderGrid();
+            updateDataDisplay();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function shootPellet(turret) {
+            const [dr, dc] = directionVectors[turret.direction];
+            newRow = turret.position[0] + dr;
+            newCol = turret.position[1] + dc;
+
+            // Check if pellet would spawn inside bounds
+            if (newRow >= 0 && newRow < GRID_ROWS && newCol >= 0 && newCol < GRID_COLS) {
+                pellets.push({
+                    row: newRow,
+                    col: newCol,
+                    direction: turret.direction,
+                    active: true
+                });
+            }
+        }
+
+        function movePellets() {
+            // Process pellets in reverse order to safely remove them
+            for (let i = pellets.length - 1; i >= 0; i--) {
+                const pellet = pellets[i];
+                if (!pellet.active) continue;
+
+                const [dr, dc] = directionVectors[pellet.direction];
+                const newRow = pellet.row + dr;
+                const newCol = pellet.col + dc;
+
+                // Check boundaries
+                if (newRow < 0 || newRow >= GRID_ROWS || newCol < 0 || newCol >= GRID_COLS) {
+                    pellets.splice(i, 1);
+                    continue;
+                }
+
+                // Check obstacles
+                if (gridData[newRow][newCol] === 1) {
+                    pellets.splice(i, 1);
+                    continue;
+                }
+
+                // Check boxes (push them!)
+                const boxIdx = boxes.findIndex(b => b.position[0] === newRow && b.position[1] === newCol);
+                if (boxIdx !== -1) {
+                    const aheadRow = newRow + dr;
+                    const aheadCol = newCol + dc;
+                    if (aheadRow >= 0 && aheadRow < GRID_ROWS && aheadCol >= 0 && aheadCol < GRID_COLS && gridData[aheadRow][aheadCol] === 0) {
+                        // Push box forward
+                        boxes[boxIdx].position = [aheadRow, aheadCol];
+                        boxes[boxIdx].pushed = true;
+                        gridData[newRow][newCol] = 0;
+                        gridData[aheadRow][aheadCol] = 3;
+                    } else {
+                        // Can't push box — remove pellet
+                        pellets.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                // Check characters (hurt character!)
+                if (newRow === character.position[0] && newCol === character.position[1]) {
+                    // Take damage - reset score for now as a simple "hurt" mechanic
+                    character.score = Math.max(0, character.score - 1);
+                    pellets.splice(i, 1);
+                    continue;
+                }
+
+                // Move pellet forward
+                pellet.row = newRow;
+                pellet.col = newCol;
+            }
+        }
+
+        // ===== ROBOTS - Movement and Collision =====
+        const robotDirectionVectors = {
+            'up': [-1, 0],
+            'down': [1, 0],
+            'left': [0, -1],
+            'right': [0, 1]
+        };
+
+        function moveRobots() {
+            const now = Date.now();
+            robots.forEach(robot => {
+                if (now - robot.lastMoveTime < robot.moveInterval) return;
+
+                const [dr, dc] = robotDirectionVectors[robot.direction];
+                const newRow = robot.position[0] + dr;
+                const newCol = robot.position[1] + dc;
+
+                // Check boundaries
+                if (newRow < 0 || newRow >= GRID_ROWS || newCol < 0 || newCol >= GRID_COLS) {
+                    robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                    robot.lastMoveTime = now;
+                    return;
+                }
+
+                // Check obstacles and other static objects
+                if (gridData[newRow][newCol] === 1) {
+                    // Try a new random direction
+                    robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                    robot.lastMoveTime = now;
+                    return;
+                }
+
+                // Check if there's a box (robots can't push boxes, just turn)
+                const boxIdx = boxes.findIndex(b => b.position[0] === newRow && b.position[1] === newCol);
+                if (boxIdx !== -1) {
+                    robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                    robot.lastMoveTime = now;
+                    return;
+                }
+
+                // Check if another robot is there
+                const otherRobot = robots.find(r => r !== robot && r.position[0] === newRow && r.position[1] === newCol);
+                if (otherRobot) {
+                    robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                    robot.lastMoveTime = now;
+                    return;
+                }
+
+                // Clear old position from gridData
+                gridData[robot.position[0]][robot.position[1]] = 0;
+
+                // Move robot to new position
+                robot.position = [newRow, newCol];
+                gridData[newRow][newCol] = 5; // mark as robot location
+
+                // Check if robot hit the character
+                if (newRow === character.position[0] && newCol === character.position[1]) {
+                    character.score = Math.max(0, character.score - 1);
+                    // Bounce robot back and change direction
+                    gridData[newRow][newCol] = 0;
+                    gridData[robot.position[0]][robot.position[1]] = 5;
+                    robot.position = [robot.position[0] - dr, robot.position[1] - dc];
+                    gridData[robot.position[0]][robot.position[1]] = 5;
+                    robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                } else {
+                    // Random direction change (20% chance)
+                    if (Math.random() < 0.2) {
+                        robot.direction = ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)];
+                    }
+                }
+
+                robot.lastMoveTime = now;
+            });
+        }
+
+        function isRobotAt(r, c) {
+            return robots.some(robot => robot.position[0] === r && robot.position[1] === c);
+        }
+
+        function getRobotAt(r, c) {
+            return robots.find(robot => robot.position[0] === r && robot.position[1] === c);
+        }
+
+        function isTurretAt(r, c) {
+            return turrets.some(t => t.position[0] === r && t.position[1] === c);
+        }
+
+        function isPelletAt(r, c) {
+            return pellets.some(p => p.row === r && p.col === c);
+        }
+
+        function isBoxAt(r, c) {
+            return boxes.some(box => box.position[0] === r && box.position[1] === c);
+        }
+
+        function getBoxAt(r, c) {
+            return boxes.find(box => box.position[0] === r && box.position[1] === c);
+        }
+
+        function isCollectibleAt(r, c) {
+            return collectibles.some(pos => pos[0] === r && pos[1] === c);
+        }
+
+        // ===== DOM REFERENCES =====
+        const gameGrid = document.getElementById('game-grid');
+        const dataDisplay = document.getElementById('data-display');
+
+        function renderGrid() {
+            gameGrid.innerHTML = '';
+            gameGrid.style.gridTemplateColumns = `repeat(${GRID_COLS}, ${CELL_SIZE}px)`;
+            gameGrid.style.gridTemplateRows = `repeat(${GRID_ROWS}, ${CELL_SIZE}px)`;
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    // Check if character is here
+                    if (r === character.position[0] && c === character.position[1]) {
+                        cell.innerHTML = '<span class="character">🧙</span>';
+                    }
+                    // Check if pellet is here
+                    else if (isPelletAt(r, c)) {
+                        cell.innerHTML = '⚡';
+                        cell.classList.add('pellet-cell');
+                    }
+                    // Check if box
+                    else if (isBoxAt(r, c)) {
+                        const boxIdx = boxes.findIndex(b => b.position[0] === r && b.position[1] === c);
+                        cell.innerHTML = `<span class="character">${boxSymbols[boxIdx % boxSymbols.length]}</span>`;
+                        if (boxes[boxIdx]?.pushed) {
+                            cell.style.backgroundColor = 'rgba(46, 204, 113, 0.3)';
+                        } else {
+                            cell.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
+                        }
+                    }
+                    // Check if obstacle
+                    else if (gridData[r][c] === 1) {
+                        cell.innerHTML = '🪨';
+                        cell.style.backgroundColor = 'rgba(100, 100, 100, 0.3)';
+                    }
+                    // Check if collectible
+                    else if (isCollectibleAt(r, c)) {
+                        cell.innerHTML = '💎';
+                    }
+                    // Check if turret is here
+                    else if (isTurretAt(r, c)) {
+                        const turretIdx = turrets.findIndex(t => t.position[0] === r && t.position[1] === c);
+                        const turret = turrets[turretIdx];
+                        let arrow = '🔴';
+                        switch (turret.direction) {
+                            case 'up': arrow = '⬆️'; break;
+                            case 'down': arrow = '⬇️'; break;
+                            case 'left': arrow = '⬅️'; break;
+                            case 'right': arrow = '➡️'; break;
+                        }
+                        cell.innerHTML = `<span class="character">${arrow}</span>`;
+                        cell.classList.add('turret-cell');
+                    }
+                    // Check if robot is here
+                    else if (isRobotAt(r, c)) {
+                        const robotIdx = robots.findIndex(robot => robot.position[0] === r && robot.position[1] === c);
+                        cell.innerHTML = `<span class="character">${robots[robotIdx].symbol}</span>`;
+                        cell.classList.add('robot-cell');
+                    }
+
+                    gameGrid.appendChild(cell);
+                }
+            }
+        }
+
+        function updateDataDisplay() {
+            const data = {
+                position: character.position,
+                direction: character.direction,
+                trail: character.trail,
+                moves: character.moves,
+                score: character.score,
+                obstacles: obstacles,
+                collectibles: collectibles,
+                robots: robots.map(robot => ({ position: robot.position, direction: robot.direction, symbol: robot.symbol })),
+                gridSize: [GRID_ROWS, GRID_COLS]
+            };
+            dataDisplay.textContent = JSON.stringify(data, null, 2);
+        }
+
+        // ===== MOVEMENT LOGIC =====
+        const directionMap = {
+            'w': [-1, 0],
+            's': [1, 0],
+            'a': [0, -1],
+            'd': [0, 1]
+        };
+
+        const directionSymbols = {
+            'w': 'up',
+            's': 'down',
+            'a': 'left',
+            'd': 'right'
+        };
+
+        function handleKeyPress(e) {
+            const key = e.key.toLowerCase();
+            if (!(key in directionMap)) return;
+
+            e.preventDefault();
+
+            const [dr, dc] = directionMap[key];
+            const newRow = character.position[0] + dr;
+            const newCol = character.position[1] + dc;
+
+            // Check boundaries
+            if (newRow < 0 || newRow >= GRID_ROWS || newCol < 0 || newCol >= GRID_COLS) {
+                return;
+            }
+
+            // Check obstacles first
+            if (gridData[newRow][newCol] === 1) {
+                return;
+            }
+
+            // Only check pushability if there's actually a box at the target position
+            const targetBox = getBoxAt(newRow, newCol);
+            if (targetBox) {
+                if (!canPushBox(newRow, newCol, dr, dc)) {
+                    return; // Box chain cannot be pushed
+                }
+
+                // Clear character old position from gridData
+                gridData[character.position[0]][character.position[1]] = 0;
+
+                // Push boxes (chain push)
+                pushBoxesInDirection(newRow, newCol, dr, dc);
+            } else {
+                // No box — just walk into empty space, clear old position from gridData
+                gridData[character.position[0]][character.position[1]] = 0;
+            }
+
+            // Move character
+            character.position = [newRow, newCol];
+            character.direction = directionSymbols[key];
+
+            // Add to trail and moves arrays
+            character.trail.push([newRow, newCol]);
+            character.moves.push({ key: key, row: newRow, col: newCol });
+
+            // Check collectibles
+            const collectibleIndex = collectibles.findIndex(
+                pos => pos[0] === newRow && pos[1] === newCol
+            );
+            if (collectibleIndex !== -1) {
+                collectibles.splice(collectibleIndex, 1);
+                character.score++;
+            }
+
+            renderGrid();
+            updateDataDisplay();
+        }
+
+        // Check if all boxes in a chain can be pushed in the given direction
+        function canPushBox(r, c, dr, dc) {
+            const aheadRow = r + dr;
+            const aheadCol = c + dc;
+
+            // Out of bounds?
+            if (aheadRow < 0 || aheadRow >= GRID_ROWS || aheadCol < 0 || aheadCol >= GRID_COLS) {
+                return false;
+            }
+
+            // Obstacle blocks the chain?
+            if (gridData[aheadRow][aheadCol] === 1) {
+                return false;
+            }
+
+            // If there's another box ahead, recursively check it
+            const nextBox = getBoxAt(aheadRow, aheadCol);
+            if (nextBox) {
+                return canPushBox(aheadRow, aheadCol, dr, dc);
+            }
+
+            // No box directly ahead — keep checking further in case there's another box down the line
+            // If we're at an empty cell with nothing blocking, check if anything further away is a box
+            if (aheadRow !== r + dr || aheadCol !== c + dc) {
+                return false; // Shouldn't happen, but safety check
+            }
+
+            return true; // Nothing blocks us and no more boxes to push
+        }
+
+        // Recursively push boxes in a chain
+        function pushBoxesInDirection(r, c, dr, dc) {
+            const aheadRow = r + dr;
+            const aheadCol = c + dc;
+
+            // If there's another box ahead, push it first (chain)
+            const nextBox = getBoxAt(aheadRow, aheadCol);
+            if (nextBox) {
+                pushBoxesInDirection(aheadRow, aheadCol, dr, dc);
+                return;
+            }
+
+            // No more boxes ahead — find which box we're moving and update it
+            const targetBox = getBoxAt(r, c);
+            if (targetBox) {
+                targetBox.position = [aheadRow, aheadCol];
+                targetBox.pushed = true;
+                gridData[r][c] = 0; // clear old box position
+                gridData[aheadRow][aheadCol] = 3; // mark new box position
+            }
+        }
+
+        // ===== RESET FUNCTIONALITY =====
+        function resetPosition() {
+            character.position = [7, 10];
+            character.direction = 'right';
+            character.trail = [[7, 10]];
+            character.moves = [];
+            character.score = 0;
+
+            // Regenerate collectibles
+            collectibles.length = 0;
+            for (let i = 0; i < 8; i++) {
+                let r, c;
+                do {
+                    r = Math.floor(Math.random() * GRID_ROWS);
+                    c = Math.floor(Math.random() * GRID_COLS);
+                } while (gridData[r][c] === 1 || (r === 7 && c === 10));
+                collectibles.push([r, c]);
+            }
+
+            renderGrid();
+            updateDataDisplay();
+        }
+
+        // ===== EVENT LISTENERS =====
+        document.addEventListener('keydown', handleKeyPress);
+        document.getElementById('reset-btn').addEventListener('click', resetPosition);
+
+        // ===== INITIALIZE =====
+        renderGrid();
+        updateDataDisplay();
+
+        // Start the turret game loop
+        gameLoop();
+    </script>
+</body>
+
+</html>
